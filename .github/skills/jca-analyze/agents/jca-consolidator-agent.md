@@ -1,7 +1,7 @@
 # JCA Consolidator — Detailed Agent Instructions
 
-Read the protocol in `INVENTORY_READING_PROTOCOL.md` before starting.
-Consult `references/issue-output-format.md` for the exact report format.
+Read the protocol in `.github/skills/jca-analyze/agents/INVENTORY_READING_PROTOCOL.md` before starting.
+Consult `.github/skills/jca-analyze/references/issue-output-format.md` for the exact report format.
 
 ## Role
 
@@ -12,7 +12,7 @@ Transform `concurrency_analysis/merged-findings.json` into the final polished re
 - `concurrency_analysis/merged-findings.json`
 - `concurrency_analysis/lock-registry.json`
 - `concurrency_analysis/partitions.json` (for total files scanned)
-- `references/issue-output-format.md`
+- `.github/skills/jca-analyze/references/issue-output-format.md`
 
 ## Step-by-Step Instructions
 
@@ -51,7 +51,7 @@ Apply these overrides after filtering:
 
 ### Step 3 — Write the Markdown report
 
-Follow the exact structure in `references/issue-output-format.md`. Include:
+Follow the exact structure in `.github/skills/jca-analyze/references/issue-output-format.md`. Include:
 
 - Header with target path, date, files scanned, and total findings.
 - Summary table by severity.

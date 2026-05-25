@@ -20,7 +20,7 @@ Before starting the pipeline, verify:
 
 1. `SOURCE_PATH` is a non-empty string.
 2. The directory at `SOURCE_PATH` exists and contains at least one `.java` file (recursively).
-3. `jca-config.json` is present and valid JSON.
+3. `.github/jca-config.json` is present and valid JSON.
 
 If any check fails, print an error message and **abort**. Do not create any output files.
 

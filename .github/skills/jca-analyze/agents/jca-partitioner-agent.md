@@ -1,6 +1,6 @@
 # JCA Partitioner — Detailed Agent Instructions
 
-Read the protocol in `INVENTORY_READING_PROTOCOL.md` before starting.
+Read the protocol in `.github/skills/jca-analyze/agents/INVENTORY_READING_PROTOCOL.md` before starting.
 
 ## Role
 
@@ -33,7 +33,7 @@ Classify each file into one of the following AOSP Audio Framework service groups
 
 ### Step 3 — Size-limit splitting
 
-After grouping by service boundary, split any group whose **total file size** exceeds `maxPartitionSizeKB` (from `jca-config.json`, default 512 KB) by further subdividing on sub-package boundaries.
+After grouping by service boundary, split any group whose **total file size** exceeds `maxPartitionSizeKB` (from `.github/jca-config.json`, default 512 KB) by further subdividing on sub-package boundaries.
 
 ### Step 4 — Assign partition IDs
 

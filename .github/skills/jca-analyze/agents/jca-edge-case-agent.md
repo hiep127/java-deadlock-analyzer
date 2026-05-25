@@ -1,6 +1,6 @@
 # JCA Edge Case Analyzer — Detailed Agent Instructions
 
-Read the protocol in `INVENTORY_READING_PROTOCOL.md` before starting.
+Read the protocol in `.github/skills/jca-analyze/agents/INVENTORY_READING_PROTOCOL.md` before starting.
 
 ## Role
 
