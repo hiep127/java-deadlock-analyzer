@@ -1,0 +1,13 @@
+# Claude Code (not needed for Copilot)
+CLAUDE.md
+.claude/
+
+# Root-level duplicates / scratch files (leading / = root-only)
+/copilot-instructions.md
+/jca-config.json
+/README.md
+/req.md
+/test_req.md
+
+# Analysis output (generated at runtime)
+concurrency_analysis/

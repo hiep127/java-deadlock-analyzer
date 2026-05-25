@@ -1,0 +1,121 @@
+{
+  "skill": {
+    "name": "JCA",
+    "fullName": "Java Concurrency Analyzer",
+    "version": "2.0.0",
+    "description": "Detects concurrency defects in Google AOSP Java modules, with a primary focus on the Android Audio Framework.",
+    "author": "JCA Contributors",
+    "license": "MIT"
+  },
+  "commands": [
+    {
+      "name": "jca-analyze",
+      "trigger": "/jca-analyze",
+      "description": "Run the full multi-agent concurrency analysis pipeline on a specified AOSP Java path.",
+      "skillFile": ".github/skills/jca-analyze/SKILL.md",
+      "workflowFile": ".github/skills/jca-analyze/workflows/analyze.md",
+      "args": [
+        {
+          "name": "SOURCE_PATH",
+          "description": "Repository-relative path to the AOSP Java directory to analyze (e.g., frameworks/base/services/core/java/com/android/server/audio/).",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "jca-publish",
+      "trigger": "/jca-publish",
+      "description": "Publish the most recent JCA analysis report to the configured destination.",
+      "skillFile": ".github/skills/jca-publish/SKILL.md",
+      "args": []
+    },
+    {
+      "name": "jca-help",
+      "trigger": "/jca-help",
+      "description": "Display JCA usage instructions, available commands, and agent pipeline overview.",
+      "skillFile": ".github/skills/jca-help/SKILL.md",
+      "args": []
+    }
+  ],
+  "pipeline": {
+    "outputDirectory": "concurrency_analysis",
+    "parallelWorkers": 4,
+    "maxPartitionSizeKB": 512,
+    "agents": [
+      "jca-orchestrator",
+      "jca-partitioner",
+      "jca-diagram-generator",
+      "jca-source-scanner",
+      "jca-fullscan-worker",
+      "jca-race-detector",
+      "jca-deadlock-detector",
+      "jca-edge-case-analyzer",
+      "jca-merger",
+      "jca-consolidator"
+    ],
+    "agentStubsDir": ".github/agents/",
+    "agentInstructionsDir": ".github/skills/jca-analyze/agents/"
+  },
+  "publish": {
+    "destination": "confluence",
+    "spaceKey": "ANDROID",
+    "parentPageTitle": "JCA Analysis Reports",
+    "reportFormat": ["markdown", "json"]
+  },
+  "analysis": {
+    "targetLanguage": "java",
+    "targetFramework": "AOSP",
+    "primaryFocus": "AudioFramework",
+    "minSeverityToReport": "LOW",
+    "severityLevels": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
+    "aosp": {
+      "audioFrameworkClasses": [
+        "AudioService",
+        "MediaFocusControl",
+        "AudioDeviceBroker",
+        "AudioDeviceInventory",
+        "AudioManager",
+        "AudioManagerInternal",
+        "AudioTrack",
+        "AudioRecord",
+        "AudioSystem",
+        "AudioEffect",
+        "AudioPolicy",
+        "AudioProductStrategy",
+        "MediaSessionService",
+        "PlaybackActivityMonitor",
+        "RecordingActivityMonitor"
+      ],
+      "audioFrameworkLocks": [
+        "mLock",
+        "mFocusLock",
+        "mDeviceBrokerLock",
+        "mStateLock",
+        "mSettingsLock"
+      ],
+      "audioFrameworkPaths": [
+        "frameworks/base/services/core/java/com/android/server/audio/",
+        "frameworks/base/media/java/android/media/",
+        "frameworks/base/services/core/java/com/android/server/media/"
+      ],
+      "concurrencyPatterns": [
+        "synchronized",
+        "ReentrantLock",
+        "ReadWriteLock",
+        "Handler",
+        "Looper",
+        "HandlerThread",
+        "Binder",
+        "IBinder",
+        "AIDL",
+        "runWithScissors",
+        "AudioSystem",
+        "volatile",
+        "AtomicReference",
+        "AtomicInteger",
+        "linkToDeath",
+        "DeathRecipient"
+      ]
+    }
+  }
+}
