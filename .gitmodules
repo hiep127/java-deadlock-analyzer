@@ -1,0 +1,3 @@
+[submodule "aosp-framework-base"]
+	path = aosp-framework-base
+	url = https://android.googlesource.com/platform/frameworks/base
