@@ -4,7 +4,7 @@ Read the protocol in `.github/skills/jca-analyze/agents/INVENTORY_READING_PROTOC
 
 ## Role
 
-Divide the target AOSP Java path into logical, independently-analyzable partitions. Your output (`concurrency_analysis/partitions.json`) is the foundation that every subsequent agent depends on.
+Divide the target Java source path into logical, independently-analyzable partitions. Your output (`concurrency_analysis/partitions.json`) is the foundation that every subsequent agent depends on.
 
 ## Step-by-Step Instructions
 
@@ -15,29 +15,31 @@ Recursively enumerate every `.java` file under `SOURCE_PATH`. For each file reco
 - Package declaration (first `package ...;` line)
 - File size in bytes
 
-### Step 2 — Identify Audio Framework service boundaries
+### Step 2 — Classify by package or module boundary
 
-Classify each file into one of the following AOSP Audio Framework service groups (in priority order):
+Group files by their top-level package segment or module name. Use the following priority order:
 
 | Group ID | Matching Rule |
 |---|---|
-| `audio-service` | Package `com.android.server.audio` or class name contains `AudioService` |
-| `audio-manager` | Class `AudioManager`, `AudioManagerInternal`, or package `android.media` (API layer) |
-| `audio-focus` | Class name contains `AudioFocus`, `FocusRequester`, `MediaFocusControl` |
-| `audio-policy` | Class name contains `AudioPolicy`, `AudioEffect`, `AudioProductStrategy` |
-| `media-session` | Package `com.android.server.media` or class name contains `MediaSession` |
-| `audio-track-record` | Class `AudioTrack`, `AudioRecord`, `AudioTimestamp` |
-| `audio-routing` | Class name contains `AudioRouting`, `AudioDeviceInfo`, `AudioDevicePort` |
-| `aidl-stubs` | File is an AIDL-generated stub (class ends in `.Stub` or `.Stub.Proxy`, or file ends in `AIDL.java`) |
+| `<top-package>-service` | Package ends in `.service` or `.services`, or class name ends in `Service` |
+| `<top-package>-manager` | Class name ends in `Manager` or `Registry` |
+| `<top-package>-handler` | Class name ends in `Handler`, `Processor`, or `Worker` |
+| `<top-package>-repository` | Package ends in `.repository` or `.dao`, or class name ends in `Repository` or `Dao` |
+| `<top-package>-model` | Package ends in `.model`, `.entity`, or `.domain` |
+| `<top-package>-util` | Package ends in `.util` or `.helper` |
 | `misc` | Everything else |
+
+If the codebase uses Java modules (`module-info.java`), use the module name as the group ID instead.
+
+Derive `<top-package>` from the first two segments of the package declaration (e.g., `com.example` from `com.example.service.OrderService`).
 
 ### Step 3 — Size-limit splitting
 
-After grouping by service boundary, split any group whose **total file size** exceeds `maxPartitionSizeKB` (from `.github/jca-config.json`, default 512 KB) by further subdividing on sub-package boundaries.
+After grouping, split any group whose **total file size** exceeds `maxPartitionSizeKB` (from `.github/jca-config.json`, default 512 KB) by further subdividing on sub-package boundaries.
 
 ### Step 4 — Assign partition IDs
 
-Assign each partition a stable ID: `p<two-digit-index>-<group-id>` (e.g., `p01-audio-service`, `p02-audio-focus`).
+Assign each partition a stable ID: `p<two-digit-index>-<group-id>` (e.g., `p01-order-service`, `p02-payment-manager`).
 
 ### Step 5 — Write output
 
@@ -53,10 +55,10 @@ Write `concurrency_analysis/partitions.json`.
   "partition_count": 0,
   "partitions": [
     {
-      "id": "p01-audio-service",
-      "group": "audio-service",
+      "id": "p01-order-service",
+      "group": "order-service",
       "files": [
-        "frameworks/base/services/core/java/com/android/server/audio/AudioService.java"
+        "src/main/java/com/example/service/OrderService.java"
       ],
       "file_count": 0,
       "size_kb": 0

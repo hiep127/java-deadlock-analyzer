@@ -1,162 +1,191 @@
-# AOSP Audio Framework — Known Edge Cases & Concurrency Hazards
+# Java Concurrency — Known Edge Cases & Hazard Patterns
 
-This document catalogues known or historically observed concurrency hazard patterns specific to the Android Audio Framework (`frameworks/base/services/core/java/com/android/server/audio/` and related paths). JCA detector agents must actively search for these patterns.
-
----
-
-## 1. AudioService Lock Architecture
-
-### 1.1 Primary Lock: `mLock`
-
-`AudioService` uses a single primary lock (`mLock`, type `Object`) to protect the majority of its state. Key state protected by `mLock`:
-
-- `mStreamStates[]` — per-stream volume state array
-- `mRingerMode`, `mRingerModeExternal` — ringer/silent mode
-- `mAudioMode` — audio mode (normal, in-call, in-communication, ringtone)
-- `mForcedUseForComm`, `mForcedUseForCommExt`
-- `mMuteAffectedStreams`, `mPersistSafeVolumeState`
-
-**Hazard:** Any code that reads these fields outside `synchronized(mLock)` is a race.
-
-### 1.2 Audio Focus Lock: `mFocusLock` (in `MediaFocusControl`)
-
-`MediaFocusControl` maintains `mFocusStack` (the audio focus request stack) protected by its own lock `mFocusLock`. `AudioService` calls into `MediaFocusControl` from within `synchronized(mLock)`.
-
-**Known inversion pattern:** If any code path acquires `mFocusLock` first and then attempts to call into `AudioService` (acquiring `mLock`), a deadlock cycle is formed.
-
-### 1.3 DeviceBroker Lock
-
-`AudioDeviceBroker` has its own `mDeviceBrokerLock`. `AudioService` holds `mLock` and calls `mDeviceBroker.setBluetoothA2dpOnInt()` and similar methods that acquire `mDeviceBrokerLock`.
-
-**Rule:** `mLock` must always be acquired before `mDeviceBrokerLock`. Inversion = deadlock.
+This document catalogues known or commonly observed concurrency hazard patterns in Java applications. JCA detector agents must actively search for these patterns in any Java codebase.
 
 ---
 
-## 2. Audio Focus Callback Re-Entrancy
+## 1. Lock Architecture Anti-Patterns
 
-### 2.1 Focus Change Dispatch Under Lock
+### 1.1 God Lock / Coarse-Grained Primary Lock
 
-`MediaFocusControl.notifyTopOfAudioFocusStack()` and `dispatchAudioFocusChange()` iterate over `mFocusStack` and call `IAudioFocusDispatcher.dispatchAudioFocusChange()` on each registered client. These callbacks are synchronous Binder calls.
+A single lock (e.g., `private final Object mLock = new Object()`) is used to protect the entirety of a large component's state. Hazards:
 
-**Hazard:** These dispatches are sometimes made while `mLock` is held in `AudioService`. The client receiving the callback may call `AudioManager.requestAudioFocus()` or `abandonAudioFocus()`, which goes through Binder back into `AudioService`, where it waits for `mLock` → deadlock.
+- Any thread that needs any state must contend for the one lock, creating a bottleneck.
+- Long-running operations (I/O, IPC calls) held under the lock block all other operations.
+- As the class grows, it becomes easy to accidentally call external code while holding the lock.
 
-**Signature to detect:**
+**Detection:** A single lock field whose acquisition sites span more than 20 distinct methods, or where external calls (IPC, I/O) appear inside `synchronized(mLock)`.
+
+### 1.2 Lock-Order Inversion (Classic Deadlock)
+
+Two locks `A` and `B` exist. Thread 1 acquires `A` then `B`. Thread 2 acquires `B` then `A`. Both threads can stall forever.
+
+**Detection:** From the lock graph, find any pair where both `A→B` and `B→A` edges exist across any two code paths (even across different classes or modules). This is a confirmed inversion.
+
+### 1.3 Missing `unlock()` in Non-`finally` Code
+
+`ReentrantLock.unlock()` called outside a `finally` block means an exception will leave the lock permanently held, preventing all future acquisitions.
+
+**Required pattern:**
 ```java
-// Inside synchronized(mLock) in AudioService:
-mMediaFocusControl.requestAudioFocus(...);  // triggers focus change notifications
-// OR
-synchronized (mLock) {
-    // direct focus dispatch
-    focusDispatcher.dispatchAudioFocusChange(...);  // DANGEROUS
-}
-```
-
-### 2.2 Focus Stack Iteration During Concurrent Modification
-
-`mFocusStack` (a `LinkedList` or `ArrayDeque`) is iterated in `dispatchAudioFocusChange()` while a Binder thread may concurrently call `abandonAudioFocus()` which removes from `mFocusStack`. Without consistent locking, this causes `ConcurrentModificationException` at runtime (itself a symptom of a race).
-
----
-
-## 3. AudioSystem JNI Blocking Calls
-
-### 3.1 Calls That Cross the JNI Boundary
-
-The following static `AudioSystem` methods make JNI calls into the native `AudioFlinger` or `AudioPolicyManager`, which may block on native mutexes (C++ `std::mutex` or `android::Mutex`):
-
-```java
-AudioSystem.setParameters(String keyValuePairs)
-AudioSystem.getParameters(String keys)
-AudioSystem.setStreamVolumeIndex(int stream, int index, int device)
-AudioSystem.getStreamVolumeIndex(int stream, int device)
-AudioSystem.setDeviceConnectionState(int device, int state, String deviceAddress, String deviceName, int codecFormat)
-AudioSystem.getDeviceConnectionState(int device, String deviceAddress)
-AudioSystem.setPhoneState(int state)
-AudioSystem.setForceUse(int usage, int config)
-```
-
-**Hazard:** If any of these are called inside `synchronized(mLock)` in `AudioService`, the thread holds the Java lock while a native mutex is acquired. This creates a "hidden" lock acquisition invisible to Java static analysis. A native-side deadlock cycle can involve the Java `mLock` even though the Java code never directly acquires the native mutex.
-
-**Detection instruction:** Flag any `AudioSystem.*()` call that appears inside a `synchronized` block, regardless of what other detectors report.
-
----
-
-## 4. Audio Handler (`mAudioHandler`) Patterns
-
-### 4.1 Handler Thread vs. Binder Thread State Races
-
-`AudioService` uses `mAudioHandler` (running on its own `HandlerThread`) for deferred state persistence and some state mutations. Patterns where both the Binder thread and the handler thread access the same state:
-
-- `mStreamStates[stream].setIndex(index, device)` can be called from both `mAudioHandler.handleMessage(MSG_SET_DEVICE_VOLUME)` and directly from `setStreamVolume()` on the Binder thread. If the Binder-thread path is not consistently guarded by `mLock` and the handler path is also not guarded, there is a race.
-
-### 4.2 Volume Persistence Race
-
-`MSG_PERSIST_VOLUME` is posted to `mAudioHandler` to write volume settings to `Settings.System`. If `mStreamStates[stream]` is mutated between the time the message is posted and the time the handler processes it (without the handler re-reading from `mStreamStates` under `mLock`), the persisted value may be stale.
-
-### 4.3 `MSG_AUDIO_SERVER_DIED` Reinitialisation
-
-When `AudioFlinger`/`AudioPolicyService` crashes and is restarted, `AudioService` receives `MSG_AUDIO_SERVER_DIED` and re-sends all state. During the window between crash detection and re-initialization, Binder calls to `AudioSystem` will fail or return stale data. Code that does not check return values from `AudioSystem.*()` during this window may corrupt state.
-
----
-
-## 5. AudioRecord / AudioTrack State Machine
-
-### 5.1 Native Callback Thread vs. Java API Thread
-
-`AudioTrack` and `AudioRecord` use a native callback thread (`AudioTrackThread` / `AudioRecordThread`) to deliver `OnPlaybackPositionUpdateListener`, `OnRecordPositionUpdateListener`, and periodic callbacks. These callbacks run on the native thread, not the Java thread that created the `AudioTrack`/`AudioRecord`.
-
-**Hazard:** Callback listener code that accesses `AudioTrack`/`AudioRecord` state fields (e.g., `mPlaybackHeadPosition`, `mState`) without synchronization while the Java API thread also modifies them is a race.
-
-### 5.2 State Transitions
-
-`AudioTrack` uses `mState` (an int field) to track its lifecycle (STATE_UNINITIALIZED → STATE_INITIALIZED → ...). If `stop()` and `flush()` are called from different threads without synchronization, the state machine can enter an invalid state.
-
----
-
-## 6. MediaSession ↔ AudioService Interaction
-
-### 6.1 Callback Cycle
-
-`MediaSessionService` calls into `AudioService` for volume key handling, and `AudioService` calls into `MediaSessionService` for active media session queries. If either service holds its primary lock while calling into the other, a cross-service lock inversion exists.
-
-**Known path:**
-- `AudioService.dispatchMediaKeyEvent()` may call `mMediaSessionService.dispatchMediaKeyEvent()` while holding `mLock`.
-- `MediaSessionService.notifyActiveSessionsChanged()` may call `AudioService.setStreamVolume()` indirectly via a volume callback.
-
-### 6.2 `IMediaSessionService.Stub` Callbacks Under Lock
-
-Any call to an `IMediaSessionService` AIDL proxy from within `AudioService.synchronized(mLock)` is a potential deadlock entry point.
-
----
-
-## 7. AppOps / Permission Check Patterns
-
-`AppOpsManager.noteOp()` and `PermissionManager.checkPermission()` are Binder calls. They must **never** be called while holding `mLock` in `AudioService`, as the AppOps and Permission services may call back into `AudioService`.
-
-**Detection signature:**
-```java
-synchronized (mLock) {
-    mAppOps.noteOp(...);           // DANGEROUS — Binder call under lock
-    checkCallingPermission(...);   // May be a Binder call under lock
+lock.lock();
+try {
+    // work
+} finally {
+    lock.unlock();
 }
 ```
 
 ---
 
-## 8. `linkToDeath` / `DeathRecipient` Race Windows
+## 2. Callback and Listener Re-Entrancy
 
-### 8.1 Focus Owner Binder Death
+### 2.1 Listener Dispatch Under Lock
 
-When a client that holds audio focus dies, `AudioService.AudioFocusDeathHandler.binderDied()` is called on a Binder thread. This method modifies `mFocusStack` in `MediaFocusControl`. If the main AudioService thread is also modifying `mFocusStack` without acquiring `mFocusLock`, a race occurs.
+A common pattern: a component holds a lock while iterating over registered listeners and calling them:
 
-### 8.2 Registration Gap
+```java
+synchronized (mLock) {
+    for (Listener l : mListeners) {
+        l.onEvent(event);   // DANGEROUS — external call under lock
+    }
+}
+```
 
-Pattern to detect:
+If any listener calls back into the component (e.g., to unregister itself or query state), it will deadlock on `mLock`.
+
+**Safe alternative:** Copy the listener list under the lock, release the lock, then invoke callbacks on the copy.
+
+### 2.2 Concurrent Modification During Iteration
+
+`mListeners` (a `List` or `Set`) iterated in one thread while another thread adds/removes from it without consistent synchronization → `ConcurrentModificationException` at runtime (a symptom of the underlying race).
+
+### 2.3 Synchronous IPC Callback Under Lock
+
+If a component holds lock `L` and makes a synchronous RPC/Binder call to a remote component, and the remote component's handler calls back into the originating component requiring lock `L`, a cross-process deadlock occurs.
+
+---
+
+## 3. Blocking Calls Under Locks
+
+### 3.1 I/O Under Lock
+
+File I/O, network calls, or database queries made inside a `synchronized` block or while holding a `ReentrantLock` block the holding thread for an unbounded time, preventing all other threads from entering the lock.
+
+**Detection:** Any call to `InputStream.read()`, `OutputStream.write()`, `Socket.*`, `HttpURLConnection.*`, `JDBC.*`, or `Files.*` inside a `synchronized` block.
+
+### 3.2 Native / JNI Calls Under Lock
+
+A JNI call made while holding a Java lock may block on a native mutex. If the native side then attempts to call back into Java (via `CallVoidMethod` etc.) and that callback needs the same Java lock, a cross-language deadlock occurs.
+
+**Detection:** `native` method calls made inside `synchronized` blocks.
+
+### 3.3 `Object.wait()` / `Condition.await()` Without While-Loop Guard
+
+`wait()` can return spuriously without being notified. Code that uses `if` instead of `while` as the guard:
+
+```java
+synchronized (lock) {
+    if (!condition) lock.wait();  // BAD — spurious wakeup bypasses the condition
+    // proceed as if condition is true
+}
+```
+
+**Correct pattern:** Use `while (!condition) lock.wait();`
+
+---
+
+## 4. Executor and Thread Pool Hazards
+
+### 4.1 Thread Pool Deadlock (Task Starvation)
+
+A fixed-size thread pool where all running tasks submit new tasks to the same pool and block waiting for them to complete. If the pool is full, the new tasks never start, and the running tasks never finish — deadlock.
+
+**Detection:** `ExecutorService.submit()` or `executor.execute()` calls inside a task body, followed by `.get()` or `.join()` on the result, where both use the same pool.
+
+### 4.2 `Future.get()` / `CompletableFuture.join()` Under Lock
+
+```java
+synchronized (mLock) {
+    result = future.get();   // blocks while holding mLock
+}
+```
+
+If the future's completion action needs `mLock`, this deadlocks.
+
+### 4.3 `SingleThreadExecutor` False Thread-Safety
+
+Code that assumes a `newSingleThreadExecutor()` makes shared state safe to access from other threads. Other threads that directly access the same shared state (without going through the executor) race with the executor's tasks.
+
+---
+
+## 5. `volatile` and Atomic Misuse
+
+### 5.1 Compound `volatile` Operations
+
+```java
+volatile int mCounter;
+mCounter++;   // NOT atomic: read → increment → write as three separate operations
+```
+
+Use `AtomicInteger.incrementAndGet()` instead.
+
+### 5.2 Non-Atomic Check-Then-Act on `volatile`
+
+```java
+if (mVolatileFlag) {         // read
+    mVolatileFlag = false;   // write (gap between read and write — another thread can interleave)
+    doWork();
+}
+```
+
+**Fix:** Use `AtomicBoolean.compareAndSet(true, false)`.
+
+### 5.3 `volatile` Object Reference with Non-Atomic State
+
+A `volatile` reference to a mutable object provides visibility of the reference itself but not of the object's fields. Mutations to the referenced object's fields are not automatically visible.
+
+---
+
+## 6. `static` Initializer and Class-Loading Deadlocks
+
+### 6.1 Cross-Class Static Initialization Cycle
+
+If class A's `static {}` block references class B, and class B's `static {}` block references class A, and both are initialized simultaneously from different threads, the JVM's class-loading lock produces a deadlock.
+
+**Detection:** Circular static field references or method calls during class initialization.
+
+---
+
+## 7. Lifecycle and Registration Races
+
+### 7.1 Registration-Before-Start / Deregistration-After-Stop Gaps
+
 ```java
 IBinder binder = client.asBinder();
-if (binder != null) {                    // Check outside lock
-    // ... (gap where binder could die)
-    binder.linkToDeath(handler, 0);      // Registration outside lock
+if (binder != null) {                 // check outside lock
+    // gap — binder could die here
+    binder.linkToDeath(handler, 0);   // registration outside lock
 }
 ```
 
-The correct pattern acquires the lock around both the null check and `linkToDeath`.
+The correct pattern holds the lock around both the null check and `linkToDeath`.
+
+### 7.2 Listener Cleanup Race
+
+A listener is invoked on a background thread at the same moment the registering component calls `removeListener()` on the main thread. If `removeListener()` releases resources the listener's callback depends on, a use-after-free or NPE occurs.
+
+### 7.3 `ThreadLocal` Leaks in Pooled Threads
+
+`ThreadLocal` values set in pooled threads (e.g., `ExecutorService` workers, servlet containers) are not automatically cleaned up between tasks. A task may see stale `ThreadLocal` values left by a previous task that ran on the same thread.
+
+---
+
+## 8. Cross-Component Lock Cycles
+
+If two components each hold their own lock while calling into each other, a mutual lock inversion can deadlock both:
+
+- Component A holds `lockA` and calls `ComponentB.method()` which acquires `lockB`.
+- Component B holds `lockB` and calls `ComponentA.method()` which acquires `lockA`.
+
+**Detection:** Any call from a `synchronized` block in one class to a method in a different class or module that is itself `synchronized` or acquires a different known lock.

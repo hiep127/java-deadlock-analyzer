@@ -28,7 +28,7 @@ All inter-agent data files are located in `concurrency_analysis/`. The read orde
 All file references in output JSON **must** use the project-relative path from the repository root, in the form:
 
 ```
-"file": "frameworks/av/services/audioflinger/AudioFlinger.cpp"
+"file": "src/main/java/com/example/service/OrderService.java"
 ```
 
 **Never** use absolute OS paths. **Never** omit the path.
@@ -48,17 +48,3 @@ Every finding, annotation, and lock entry **must** include an integer `line` fie
 
 - If an expected input file is missing, log the absence to `concurrency_analysis/pipeline.log` and **abort** — do not continue with incomplete data.
 - If a specific finding entry is malformed, log it to `concurrency_analysis/pipeline.log` and skip that entry. Do not abort the entire phase for a single bad entry.
-
-## 7. AOSP Source Reference
-
-When referencing AOSP Audio Framework classes, use their canonical paths:
-
-| Class | Canonical Path |
-|---|---|
-| `AudioService` | `frameworks/base/services/core/java/com/android/server/audio/AudioService.java` |
-| `AudioManager` | `frameworks/base/media/java/android/media/AudioManager.java` |
-| `AudioFlinger` (JNI bridge) | `frameworks/av/services/audioflinger/` |
-| `AudioTrack` | `frameworks/base/media/java/android/media/AudioTrack.java` |
-| `AudioRecord` | `frameworks/base/media/java/android/media/AudioRecord.java` |
-| `MediaSessionService` | `frameworks/base/services/core/java/com/android/server/media/MediaSessionService.java` |
-| `IAudioService.aidl` | `frameworks/base/media/java/android/media/IAudioService.aidl` |

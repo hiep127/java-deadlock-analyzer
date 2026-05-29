@@ -37,7 +37,7 @@ Group findings by the key `(file, line)`. For groups with more than one finding:
 
 For each finding, check whether `(file, line)` appears in `lock-registry.json`:
 - As a lock `acquisition_site` → add `lock_context.acquisition` with the matching lock IDs.
-- In `binder_calls_under_lock` → add `lock_context.binder_call` with lock IDs.
+- In `blocking_calls_under_lock` → add `lock_context.blocking_call` with lock IDs.
 - In `lock_order_edges` → add `lock_context.lock_edge` noting the outer and inner lock IDs.
 
 ### Step 5 — Assign merged IDs
@@ -67,19 +67,19 @@ Write `concurrency_analysis/merged-findings.json` and append merge statistics to
       "id": "JCA-0001",
       "original_ids": ["DEAD-p01-001", "EDGE-p01-001"],
       "detected_by": ["jca-deadlock-detector", "jca-edge-case-analyzer"],
-      "type": "binder_call_under_lock",
+      "type": "blocking_call_under_lock",
       "severity": "CRITICAL",
-      "title": "broadcastStickyIntent() called while holding AudioService.mLock",
+      "title": "HTTP call made while holding OrderService.mLock",
       "description": "Merged description...",
-      "file": "frameworks/base/services/core/java/com/android/server/audio/AudioService.java",
-      "line": 7890,
+      "file": "src/main/java/com/example/service/OrderService.java",
+      "line": 182,
       "lock_context": {
         "acquisition": [],
-        "binder_call": [{ "lock_id": "lock_001", "lock_expr": "mLock" }],
+        "blocking_call": [{ "lock_id": "lock_001", "lock_expr": "mLock" }],
         "lock_edge": []
       },
       "related_locations": [],
-      "recommendation": "Defer the broadcast to a Handler message after releasing mLock."
+      "recommendation": "Move the HTTP call outside the synchronized block."
     }
   ]
 }

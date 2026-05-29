@@ -4,7 +4,7 @@ Read the protocol in `.github/skills/jca-analyze/agents/INVENTORY_READING_PROTOC
 
 ## Role
 
-Build a complete lock dependency graph and Binder interface inventory for the entire `SOURCE_PATH`. Your outputs (`lock-registry.json` and `lock-dependency.dot`) are the authoritative reference used by all detector agents to cross-reference findings.
+Build a complete lock dependency graph and IPC/RPC interface inventory for the entire `SOURCE_PATH`. Your outputs (`lock-registry.json` and `lock-dependency.dot`) are the authoritative reference used by all detector agents to cross-reference findings.
 
 ## Step-by-Step Instructions
 
@@ -13,8 +13,8 @@ Build a complete lock dependency graph and Binder interface inventory for the en
 Read every `.java` file under `SOURCE_PATH` completely. For each file, extract:
 
 **Lock objects:**
-- Fields declared as `Object`, `ReentrantLock`, `ReadWriteLock`, or any type commonly used as a monitor.
-- Look for naming patterns: `mLock`, `mStateLock`, `sLock`, `mListeners`, `mFocusLock`, `mSettingsLock`, `mDeviceBroker` (AudioService-specific).
+- Fields declared as `Object`, `ReentrantLock`, `ReadWriteLock`, `ReentrantReadWriteLock`, `Semaphore`, or any type commonly used as a monitor.
+- Look for naming patterns: `*Lock`, `*Monitor`, `*Guard`, `*Mutex`, `*Latch`, `*Semaphore`, `mLock`, `sLock`, `stateLock`.
 - Record the field name, type, declaring class, and the line number of the declaration.
 
 **Lock acquisition sites:**
@@ -22,17 +22,29 @@ Read every `.java` file under `SOURCE_PATH` completely. For each file, extract:
 - `synchronized` method declarations — record class, method, line.
 - `ReentrantLock.lock()` / `tryLock()` / `unlock()` — record the variable name and line.
 - `ReadWriteLock.readLock().lock()` / `writeLock().lock()` — record and distinguish read vs. write acquisition.
+- `Semaphore.acquire()` / `release()` — record the variable name and line.
 
 **Lock nesting:**
 - Where one `synchronized` block is nested inside another (same method or via direct method call), record the ordered pair `(outer → inner)` with the file and line of the inner acquisition.
 
-**Binder interfaces:**
-- Classes extending `Binder` or implementing `IBinder`.
-- AIDL-generated stubs: classes ending in `.Stub` or `.Stub.Proxy`.
-- Specific AOSP Audio AIDL interfaces: `IAudioService`, `IAudioPolicyService`, `IAudioFocusDispatcher`, `IMediaSessionService`.
+**IPC / RPC interfaces:**
+- Classes extending `Binder` or implementing `IBinder` (Android regular Binder).
+- AIDL-generated stubs: classes ending in `.Stub` (server-side) or `.Stub.Proxy` (client-side, makes synchronous calls).
+- HIDL interfaces: classes from `android.hardware.*` packages, classes extending `android.os.IHwInterface` or `android.os.HwBinder` (uses separate hwbinder thread pool).
+- gRPC service implementations: annotated with `@GrpcService` or extending generated `*Grpc.*ImplBase`.
+- RMI remote interfaces: implementing `java.rmi.Remote`.
+- Web service endpoints: methods annotated with `@WebMethod`, `@PostMapping`, `@GetMapping`, etc.
 
-**Synchronous Binder calls under lock:**
-- Any call to `IBinder.transact()` or a direct AIDL stub proxy method that appears within a `synchronized` block or after an unmatched `lock()`.
+For each AIDL interface found, record whether each method is `oneway` (non-blocking) or synchronous (blocking). Check the generated `Stub.Proxy` method body:
+- `mRemote.transact(CODE, _data, _reply, 0)` → **synchronous** (blocking)
+- `mRemote.transact(CODE, _data, null, IBinder.FLAG_ONEWAY)` → **oneway** (non-blocking)
+
+**Blocking calls under lock:**
+- Any synchronous AIDL `Stub.Proxy` method call (transact flags=0) within a `synchronized` block.
+- Any HIDL interface method call (`android.hardware.*`) within a `synchronized` block.
+- `IBinder.transact()` with flags=0 within a `synchronized` block.
+- `HttpURLConnection.*`, `Socket.*`, JDBC `.*`, or `Files.*` within a `synchronized` block.
+- `Future.get()` / `CompletableFuture.join()` inside a `synchronized` block.
 - `Handler.runWithScissors()` inside a `synchronized` block.
 
 ### Step 2 — Assign lock IDs
@@ -56,38 +68,48 @@ Write `concurrency_analysis/lock-registry.json` and `concurrency_analysis/lock-d
       "id": "lock_001",
       "expression": "mLock",
       "type": "monitor",
-      "class": "AudioService",
-      "file": "frameworks/base/services/core/java/com/android/server/audio/AudioService.java",
-      "declared_line": 312,
+      "class": "OrderService",
+      "file": "src/main/java/com/example/service/OrderService.java",
+      "declared_line": 42,
       "acquisition_sites": [
-        { "method": "setStreamVolume", "line": 1234, "type": "synchronized_block" },
-        { "method": "requestAudioFocus", "line": 5678, "type": "synchronized_block" }
+        { "method": "placeOrder", "line": 120, "type": "synchronized_block" },
+        { "method": "cancelOrder", "line": 210, "type": "synchronized_block" }
       ]
     }
   ],
-  "binder_interfaces": [
+  "ipc_interfaces": [
     {
-      "class": "IAudioService.Stub",
-      "file": "frameworks/base/media/java/android/media/IAudioService.aidl",
-      "type": "aidl_stub"
+      "class": "IFooService.Stub.Proxy",
+      "file": "src/main/java/com/example/IFooService.java",
+      "type": "aidl_proxy",
+      "methods": [
+        { "name": "doWork", "is_oneway": false, "blocks_caller": true },
+        { "name": "notifyAsync", "is_oneway": true, "blocks_caller": false }
+      ]
+    },
+    {
+      "class": "android.hardware.foo.V1_0.IFoo",
+      "file": "gen/android/hardware/foo/V1_0/IFoo.java",
+      "type": "hidl_interface",
+      "transport": "hwbinder"
     }
   ],
   "lock_order_edges": [
     {
       "outer_lock_id": "lock_001",
       "inner_lock_id": "lock_002",
-      "file": "frameworks/base/services/core/java/com/android/server/audio/AudioService.java",
-      "line": 3456,
-      "method": "setStreamVolumeLocked"
+      "file": "src/main/java/com/example/service/OrderService.java",
+      "line": 145,
+      "method": "placeOrderLocked"
     }
   ],
-  "binder_calls_under_lock": [
+  "blocking_calls_under_lock": [
     {
       "lock_id": "lock_001",
-      "binder_interface": "IActivityManager.Stub.Proxy",
-      "call_method": "broadcastStickyIntent",
-      "call_site_file": "frameworks/base/services/core/java/com/android/server/audio/AudioService.java",
-      "call_site_line": 7890
+      "call_type": "http",
+      "call_method": "HttpURLConnection.getResponseCode",
+      "call_site_file": "src/main/java/com/example/service/OrderService.java",
+      "call_site_line": 180
     }
   ]
 }
@@ -100,7 +122,7 @@ digraph LockDependency {
   rankdir=LR;
   label="JCA Lock Dependency Graph";
   node [shape=box, fontname="monospace"];
-  "mLock (AudioService)" -> "mFocusLock (MediaFocusControl)" [label="AudioService.java:3456\nsetStreamVolumeLocked"];
+  "mLock (OrderService)" -> "inventoryLock (InventoryService)" [label="OrderService.java:145\nplaceOrderLocked"];
 }
 ```
 

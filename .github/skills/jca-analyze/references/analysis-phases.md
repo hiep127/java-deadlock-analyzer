@@ -9,7 +9,7 @@ This document defines the phases of the JCA map-reduce pipeline, their sequencin
 ```
 Phase 0: Initialize
 Phase 1: Partition        ← Map setup
-Phase 2: Diagram          ← Global graph (parallel with Phase 3)
+Phase 2: Diagram          ← Global graph (parallel with Phase 1)
 Phase 3: Source Scan      ← Map (one worker per partition)
 Phase 4: Full Scan        ← Map (one worker per partition, after Phase 3)
 Phase 5: Detection        ← Map (three detectors per partition, parallel, after Phase 4)
@@ -21,7 +21,7 @@ Phase 7: Consolidate      ← Final output (after Phase 6)
 
 ## Phase 0 — Initialize
 
-**Agent:** jca-orchestrator  
+**Agent:** jca-orchestrator
 **Trigger:** User invokes `/jca-analyze <SOURCE_PATH>`
 
 **Actions:**
@@ -36,28 +36,28 @@ Phase 7: Consolidate      ← Final output (after Phase 6)
 
 ## Phase 1 — Partition
 
-**Agent:** jca-partitioner  
+**Agent:** jca-partitioner
 **Depends on:** Phase 0
 
 **Actions:**
 1. Walk `SOURCE_PATH` recursively; enumerate all `.java` files.
-2. Group by Audio Framework service boundaries.
+2. Group files by top-level package or module boundary.
 3. Split oversized groups by sub-package.
 4. Assign stable partition IDs.
 
-**Output:** `concurrency_analysis/partitions.json`  
+**Output:** `concurrency_analysis/partitions.json`
 **Completion condition:** `partitions.json` exists and contains at least one partition.
 
 ---
 
-## Phase 2 — Diagram (global, parallel with Phase 3)
+## Phase 2 — Diagram (global, parallel with Phase 1)
 
-**Agent:** jca-diagram-generator  
+**Agent:** jca-diagram-generator
 **Depends on:** Phase 0 (not Phase 1 — runs in parallel with Partition)
 
 **Actions:**
 1. Scan every `.java` file under `SOURCE_PATH`.
-2. Extract all lock objects, acquisition sites, lock-order edges, and Binder interfaces.
+2. Extract all lock objects, acquisition sites, lock-order edges, and IPC interfaces.
 3. Build lock dependency graph.
 
 **Output:**
@@ -70,7 +70,7 @@ Phase 7: Consolidate      ← Final output (after Phase 6)
 
 ## Phase 3 — Source Scan (per partition, parallel)
 
-**Agent:** jca-source-scanner (one instance per partition)  
+**Agent:** jca-source-scanner (one instance per partition)
 **Depends on:** Phase 1
 
 **Actions:**
@@ -78,29 +78,29 @@ Phase 7: Consolidate      ← Final output (after Phase 6)
 2. Perform structural pass over each file.
 3. Extract class hierarchies, lock fields, synchronized blocks, thread entry-points.
 
-**Output:** `concurrency_analysis/scans/<partition_id>-structure.json`  
+**Output:** `concurrency_analysis/scans/<partition_id>-structure.json`
 **Completion condition:** One structure file per partition exists.
 
 ---
 
 ## Phase 4 — Full Scan (per partition, parallel)
 
-**Agent:** jca-fullscan-worker (one instance per partition)  
+**Agent:** jca-fullscan-worker (one instance per partition)
 **Depends on:** Phase 3 (corresponding partition's structure file)
 
 **Actions:**
 1. Re-read every source file in the partition.
 2. Maintain per-method lock stack; annotate every synchronization event.
-3. Flag `binder_call_under_lock`, `nested_synchronized`, `run_with_scissors`, etc.
+3. Flag `blocking_call_under_lock`, `nested_synchronized`, `future_get_under_lock`, etc.
 
-**Output:** `concurrency_analysis/scans/<partition_id>-fullscan.json`  
+**Output:** `concurrency_analysis/scans/<partition_id>-fullscan.json`
 **Completion condition:** One fullscan file per partition exists.
 
 ---
 
 ## Phase 5 — Detection (per partition, three detectors run in parallel)
 
-**Agents:** jca-race-detector, jca-deadlock-detector, jca-edge-case-analyzer  
+**Agents:** jca-race-detector, jca-deadlock-detector, jca-edge-case-analyzer
 **Depends on:** Phase 4 (corresponding fullscan file) and Phase 2 (lock-registry.json)
 
 **Actions (each detector independently):**
@@ -119,7 +119,7 @@ Phase 7: Consolidate      ← Final output (after Phase 6)
 
 ## Phase 6 — Merge (reduce)
 
-**Agent:** jca-merger  
+**Agent:** jca-merger
 **Depends on:** All Phase 5 finding files for all partitions
 
 **Actions:**
@@ -129,14 +129,14 @@ Phase 7: Consolidate      ← Final output (after Phase 6)
 4. Cross-reference with `lock-registry.json`.
 5. Assign merged IDs and sort.
 
-**Output:** `concurrency_analysis/merged-findings.json`  
+**Output:** `concurrency_analysis/merged-findings.json`
 **Completion condition:** `merged-findings.json` exists.
 
 ---
 
 ## Phase 7 — Consolidate
 
-**Agent:** jca-consolidator  
+**Agent:** jca-consolidator
 **Depends on:** Phase 6
 
 **Actions:**
@@ -157,7 +157,7 @@ Phase 7: Consolidate      ← Final output (after Phase 6)
 
 | Can run in parallel | Phases |
 |---|---|
-| Yes | Phase 2 and Phase 1 |
+| Yes | Phase 1 and Phase 2 |
 | Yes | All Phase 3 workers across partitions |
 | Yes | All Phase 4 workers across partitions |
 | Yes | All three Phase 5 detectors within a partition |

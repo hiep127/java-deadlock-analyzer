@@ -1,22 +1,23 @@
 # JCA — Java Concurrency Analyzer
 
-A GitHub Copilot Skill for detecting concurrency defects in **Google AOSP Android Framework Java modules**, with a primary focus on the **Audio Framework**.
+A GitHub Copilot Skill for detecting concurrency defects in **any Java codebase**.
 
 ## What It Detects
 
-- **Deadlocks** — lock-order inversion, nested monitor cycles, synchronous Binder calls under a lock
-- **Binder hazards** — synchronous IPC while holding a Java lock, re-entrant AIDL callbacks (audio focus dispatch)
-- **Race conditions** — unsynchronized access to `AudioService` state (`mStreamStates`, `mAudioMode`, `mFocusStack`)
-- **`AudioSystem` JNI blocking under lock** — JNI calls to native AudioFlinger/AudioPolicyManager inside `synchronized` blocks
-- **Handler/Looper misuse** — `runWithScissors()` under lock, message queue priority inversion
-- **`DeathRecipient` races** — `linkToDeath` registration gaps; `binderDied()` race on focus-owner state
+- **Deadlocks** — lock-order inversion, nested monitor cycles, blocking calls under a lock
+- **Race conditions** — unsynchronized access to shared mutable state, `volatile` misuse, check-then-act races
+- **Executor hazards** — `Future.get()` under lock, thread pool starvation, `runWithScissors()` under lock
+- **Callback re-entrancy** — listener/callback dispatch while holding a lock
+- **Native boundary blocking** — JNI calls made inside `synchronized` blocks
+- **Lifecycle races** — listener cleanup races, `ThreadLocal` leaks in pooled threads, static initializer cycles
+- **Cross-component lock cycles** — two components hold their own locks while calling into each other
 
 ## Quick Start
 
 ### Run an Analysis
 
 ```
-/jca-analyze frameworks/base/services/core/java/com/android/server/audio/
+/jca-analyze src/main/java/com/example/service/
 ```
 
 ### Publish the Report
@@ -35,7 +36,7 @@ A GitHub Copilot Skill for detecting concurrency defects in **Google AOSP Androi
 
 | Command | Description |
 |---|---|
-| `/jca-analyze <path>` | Run full analysis pipeline |
+| `/jca-analyze <path>` | Run full analysis pipeline on any Java source path |
 | `/jca-publish` | Publish latest report |
 | `/jca-help` | Show usage |
 
@@ -47,7 +48,7 @@ A GitHub Copilot Skill for detecting concurrency defects in **Google AOSP Androi
   skills/
     jca-analyze/
       agents/                ← Full agent instruction files (the real system prompts)
-      references/            ← AOSP rules, edge cases, output format definitions
+      references/            ← Java concurrency rules, edge cases, output format definitions
       workflows/             ← Orchestration workflow
       SKILL.md
     jca-help/SKILL.md
@@ -87,7 +88,7 @@ All results are written to `concurrency_analysis/` in your workspace:
 Edit `jca-config.json` to adjust:
 - `pipeline.parallelWorkers` — concurrent agent count
 - `pipeline.maxPartitionSizeKB` — partition size limit
-- `publish.spaceKey` — Confluence space
+- `publish.spaceKey` — publish destination space
 - `analysis.minSeverityToReport` — minimum severity threshold
 
 ## Reference Documents
@@ -96,6 +97,6 @@ Edit `jca-config.json` to adjust:
 |---|---|
 | `skills/jca-analyze/agents/INVENTORY_READING_PROTOCOL.md` | File reading and output writing protocol |
 | `skills/jca-analyze/references/analysis-phases.md` | Pipeline phase definitions |
-| `skills/jca-analyze/references/java-aosp-assumptions.md` | AOSP thread model and JMM rules |
-| `skills/jca-analyze/references/aosp-audio-edge-cases.md` | Audio Framework hazard catalogue |
+| `skills/jca-analyze/references/java-aosp-assumptions.md` | Java thread model and JMM rules |
+| `skills/jca-analyze/references/aosp-audio-edge-cases.md` | Known Java concurrency hazard patterns |
 | `skills/jca-analyze/references/issue-output-format.md` | Finding schemas and report format |

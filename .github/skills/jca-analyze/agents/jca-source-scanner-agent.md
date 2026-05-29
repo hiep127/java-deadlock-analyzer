@@ -8,7 +8,7 @@ Perform an initial structural pass over every Java file in your assigned partiti
 
 ## Input
 
-- `PARTITION_ID`: The partition ID you are assigned (e.g., `p01-audio-service`).
+- `PARTITION_ID`: The partition ID you are assigned (e.g., `p01-order-service`).
 - `concurrency_analysis/partitions.json`: Contains the file list for your partition.
 
 ## Step-by-Step Instructions
@@ -23,11 +23,11 @@ For every file in the list, read it **completely from line 1 to the last line**.
 
 **Class declarations:**
 - Class name, superclass, all implemented interfaces.
-- Flag: is this class a subclass of `Binder`, a `Service`, an AIDL `*.Stub`?
-- Flag: is it an AOSP Audio class (`AudioService`, `AudioManager`, `AudioFlinger`, `AudioTrack`, `AudioRecord`, `MediaFocusControl`, etc.)?
+- Flag: is this class a subclass of `Thread`, `Runnable`, an RPC stub/service, or a `TimerTask`?
+- Flag: does this class implement any listener/callback/observer interface?
 
 **Lock fields:**
-- Every field whose type is `Object`, `ReentrantLock`, `ReentrantReadWriteLock`, or any type used as a monitor (infer from naming: `*Lock`, `*Monitor`, `*Guard`).
+- Every field whose type is `Object`, `ReentrantLock`, `ReentrantReadWriteLock`, `Semaphore`, or any type used as a monitor (infer from naming: `*Lock`, `*Monitor`, `*Guard`, `*Mutex`, `*Latch`).
 - Record field name, type, modifier (`private`/`static`/`final`), and declared line.
 
 **Synchronized methods and blocks:**
@@ -36,16 +36,18 @@ For every file in the list, read it **completely from line 1 to the last line**.
 
 **Thread entry-points:**
 - `run()` overrides (Runnable, Thread subclasses).
-- `Handler.Callback.handleMessage()` overrides.
-- AIDL `onTransact()` overrides (called on Binder thread pool).
-- `AsyncTask.doInBackground()` overrides.
-- Lambda/anonymous Runnable passed to `Handler.post()`, `Executor.execute()`, etc.
+- `call()` overrides (Callable).
+- `handleMessage()` overrides (Android Handler).
+- RPC/stub `onTransact()` overrides or generated service method overrides (called on a framework thread pool).
+- `doInBackground()` / `doCall()` overrides in async task classes.
+- Lambda/anonymous Runnable passed to `Executor.execute()`, `Handler.post()`, `CompletableFuture.runAsync()`, etc.
 
 **Cross-thread call sites:**
-- `handler.post(...)`, `handler.sendMessage(...)`, `handler.sendMessageAtFrontOfQueue(...)`
-- `handler.runWithScissors(...)`
-- `executor.execute(...)`, `new Thread(...).start()`
-- Audio-specific: `mAudioHandler.sendMessage(...)`, `mBrokerHandler.sendMessage(...)`
+- `executor.execute(...)`, `executor.submit(...)`
+- `handler.post(...)`, `handler.sendMessage(...)`
+- `CompletableFuture.supplyAsync(...)`, `CompletableFuture.runAsync(...)`
+- `new Thread(...).start()`
+- `scheduledExecutor.schedule(...)`, `timer.schedule(...)`
 
 ### Step 3 — Write output
 
@@ -55,45 +57,45 @@ Write `concurrency_analysis/scans/<PARTITION_ID>-structure.json`.
 
 ```json
 {
-  "partition_id": "p01-audio-service",
+  "partition_id": "p01-order-service",
   "files_scanned": 1,
   "classes": [
     {
-      "name": "AudioService",
-      "file": "frameworks/base/services/core/java/com/android/server/audio/AudioService.java",
-      "superclass": "IAudioService.Stub",
-      "interfaces": ["AudioFocusStateListener"],
-      "is_binder_service": true,
-      "is_audio_framework_class": true,
+      "name": "OrderService",
+      "file": "src/main/java/com/example/service/OrderService.java",
+      "superclass": "AbstractService",
+      "interfaces": ["OrderOperations", "ShutdownHook"],
+      "is_runnable_or_thread": false,
+      "is_rpc_service": false,
+      "is_listener": false,
       "lock_fields": [
         {
           "name": "mLock",
           "type": "Object",
           "modifiers": ["private", "final"],
-          "declared_line": 312
+          "declared_line": 42
         }
       ],
       "synchronized_methods": [
-        { "signature": "void setStreamVolume(int, int, int, String)", "line": 1100 }
+        { "signature": "void placeOrder(Order)", "line": 120 }
       ],
       "synchronized_blocks": [
         {
           "lock_expr": "mLock",
-          "start_line": 2300,
-          "end_line": 2340,
-          "method": "requestAudioFocusForClient"
+          "start_line": 210,
+          "end_line": 240,
+          "method": "cancelOrder"
         }
       ],
       "thread_entry_points": [
-        { "type": "onTransact", "line": 890, "thread": "binder_pool" },
-        { "type": "handleMessage", "line": 4200, "thread": "mAudioHandler" }
+        { "type": "executor_lambda", "line": 310, "thread": "orderExecutor" }
       ],
       "cross_thread_calls": [
         {
-          "type": "handler.sendMessage",
-          "target_handler": "mAudioHandler",
-          "line": 4500,
-          "method": "setStreamVolume"
+          "type": "executor.submit",
+          "target_executor": "orderExecutor",
+          "line": 305,
+          "method": "processOrderAsync"
         }
       ]
     }

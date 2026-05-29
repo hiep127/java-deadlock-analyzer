@@ -4,7 +4,7 @@ Read the protocol in `.github/skills/jca-analyze/agents/INVENTORY_READING_PROTOC
 
 ## Role
 
-Execute a deep, line-by-line context scan on every file in your assigned partition. Annotate every synchronization primitive, lock acquisition/release event, Binder call, Handler interaction, and `volatile` access with full contextual information — including which locks are held at the moment of each event.
+Execute a deep, line-by-line context scan on every file in your assigned partition. Annotate every synchronization primitive, lock acquisition/release event, blocking call, thread dispatch, and `volatile` access with full contextual information — including which locks are held at the moment of each event.
 
 ## Input
 
@@ -22,34 +22,37 @@ Read the structural index for your partition. Use it to pre-populate the list of
 
 For every file, read from line 1 to the last line without stopping. Maintain a **lock stack** per method as you read:
 
-- **Push** when entering `synchronized(expr) { }` or calling `.lock()` / `.readLock().lock()` / `.writeLock().lock()`.
-- **Pop** when exiting a `synchronized` block (matching `}`) or calling `.unlock()`.
+- **Push** when entering `synchronized(expr) { }` or calling `.lock()` / `.readLock().lock()` / `.writeLock().lock()` / `semaphore.acquire()`.
+- **Pop** when exiting a `synchronized` block (matching `}`) or calling `.unlock()` / `semaphore.release()`.
 - At every event below, record the current lock stack contents as `locks_held`.
 
 **Events to annotate:**
 
 | Event Type | What to Look For |
 |---|---|
-| `lock_acquisition` | `synchronized(expr)` block entry or `.lock()` call |
-| `lock_release` | `synchronized` block exit or `.unlock()` call |
-| `binder_call_under_lock` | AIDL proxy call, `IBinder.transact()`, `ContentResolver.*()` while `locks_held` is non-empty |
-| `handler_post_under_lock` | `Handler.post()`, `sendMessage()`, `sendMessageAtFrontOfQueue()` while `locks_held` is non-empty |
+| `lock_acquisition` | `synchronized(expr)` block entry or `.lock()` / `.acquire()` call |
+| `lock_release` | `synchronized` block exit or `.unlock()` / `.release()` call |
+| `blocking_call_under_lock` | I/O, JDBC, HTTP, IPC/RPC proxy call, `Thread.sleep()` while `locks_held` is non-empty |
+| `binder_sync_call_under_lock` | Call to an AIDL `.Stub.Proxy` method while `locks_held` is non-empty AND the call is synchronous (transact flags = 0, not `FLAG_ONEWAY`) |
+| `hidl_call_under_lock` | Call to an `android.hardware.*` or `IHwInterface`-typed method while `locks_held` is non-empty |
+| `future_get_under_lock` | `Future.get()` or `CompletableFuture.join()` while `locks_held` is non-empty |
+| `executor_submit_under_lock` | `executor.submit()` or `executor.execute()` while `locks_held` is non-empty |
 | `run_with_scissors` | `Handler.runWithScissors()` anywhere (always annotate; flag as HIGH if `locks_held` non-empty) |
 | `wait_notify` | `object.wait()`, `object.notify()`, `object.notifyAll()` |
 | `volatile_access` | Read or write to a `volatile` field |
 | `nested_synchronized` | `synchronized` block inside another `synchronized` block (same method) |
-| `cross_method_lock_entry` | Method call made while locks are held that itself contains a `synchronized` block |
+| `cross_method_lock_entry` | Method call made while locks are held that itself contains a `synchronized` block or lock acquisition |
+| `jni_call_under_lock` | `native` method call while `locks_held` is non-empty |
+| `oneway_ordering_assumption` | `oneway` AIDL/HIDL call followed immediately by a synchronous call on the same interface with no synchronization barrier |
 
-### Step 3 — Audio Framework specific patterns
+**Binder/AIDL/HIDL call classification — how to determine if a call is synchronous:**
+1. Check the variable type: if it's an AIDL interface type (class ending in `.Stub.Proxy`, or a variable typed to an `I`-prefixed interface that has a sibling `.Stub` class), it is an AIDL proxy.
+2. Check the generated `Stub.Proxy.methodName()` implementation: if it calls `mRemote.transact(CODE, data, reply, 0)` with flags=`0`, the call is **synchronous and blocks the caller**.
+3. If it calls `mRemote.transact(CODE, data, null, IBinder.FLAG_ONEWAY)`, the call is **asynchronous**.
+4. For HIDL: any method call on a type from `android.hardware.*` package should be treated as synchronous unless the HIDL `.hal` file declares it `oneway`.
+5. When in doubt, treat an AIDL/HIDL call as synchronous (conservative analysis).
 
-Beyond the generic events above, additionally annotate:
-
-- `mAudioHandler.sendMessage*()` or `mBrokerHandler.sendMessage*()` calls made inside `synchronized(mLock)`.
-- Any call to `IAudioService` proxy methods inside a `synchronized` block (cross-service Binder call).
-- `AudioSystem.setParameters()` or `AudioSystem.getParameters()` called under a lock (JNI call that may block on native mutex).
-- `mDeviceBroker.*()` calls made under `mLock` in `AudioService` (potential second-lock acquisition via DeviceBroker's own lock).
-
-### Step 4 — Write output
+### Step 3 — Write output
 
 Write `concurrency_analysis/scans/<PARTITION_ID>-fullscan.json`.
 
@@ -57,27 +60,27 @@ Write `concurrency_analysis/scans/<PARTITION_ID>-fullscan.json`.
 
 ```json
 {
-  "partition_id": "p01-audio-service",
+  "partition_id": "p01-order-service",
   "files_scanned": 1,
   "annotations": [
     {
-      "file": "frameworks/base/services/core/java/com/android/server/audio/AudioService.java",
-      "line": 7890,
-      "end_line": 7890,
-      "type": "binder_call_under_lock",
-      "detail": "Call to IActivityManager.Stub.Proxy.broadcastStickyIntent() while holding mLock",
+      "file": "src/main/java/com/example/service/OrderService.java",
+      "line": 182,
+      "end_line": 182,
+      "type": "blocking_call_under_lock",
+      "detail": "HttpURLConnection.getResponseCode() called while holding mLock",
       "locks_held": ["mLock"],
-      "method": "setStreamVolumeLocked",
+      "method": "placeOrder",
       "severity_hint": "HIGH"
     },
     {
-      "file": "frameworks/base/services/core/java/com/android/server/audio/AudioService.java",
-      "line": 3300,
-      "end_line": 3340,
+      "file": "src/main/java/com/example/service/OrderService.java",
+      "line": 215,
+      "end_line": 240,
       "type": "nested_synchronized",
-      "detail": "synchronized(mFocusLock) acquired inside synchronized(mLock)",
+      "detail": "synchronized(inventoryLock) acquired inside synchronized(mLock)",
       "locks_held": ["mLock"],
-      "method": "requestAudioFocusForClient",
+      "method": "reserveInventory",
       "severity_hint": "MEDIUM"
     }
   ]
@@ -86,10 +89,10 @@ Write `concurrency_analysis/scans/<PARTITION_ID>-fullscan.json`.
 
 ### Severity Hints
 
-- `CRITICAL`: Binder/JNI call while holding a lock in AudioService, AMS, or WMS.
-- `HIGH`: Any Binder/JNI call while holding any lock; `runWithScissors()` under lock.
+- `CRITICAL`: Blocking IPC/RPC call or JNI call while holding a primary service lock on a hot path.
+- `HIGH`: Any blocking call or `Future.get()` while holding any lock; `runWithScissors()` under lock.
 - `MEDIUM`: Nested `synchronized`; `wait()`/`notify()` on a non-canonical monitor; cross-method lock entry.
-- `LOW`: `volatile` compound read-modify-write; `handler.post()` under lock with no circular dependency visible.
+- `LOW`: `volatile` compound read-modify-write; `executor.submit()` under lock with no visible circular dependency.
 
 ## Mandatory Rules
 

@@ -22,11 +22,13 @@ Remove or downgrade to `INFO` any finding that matches:
 
 | Filter Rule | Action |
 |---|---|
-| `file` path contains `/test/`, `/tests/`, `/androidTest/`, or class ends in `Test` or `Mock` | Remove |
+| `file` path contains `/test/`, `/tests/`, `/androidTest/`, `/src/test/`, or class name ends in `Test` or `Mock` | Remove |
 | Lock field has only one acquisition site total across all files (single-threaded context) | Downgrade to INFO |
 | `synchronized` block is inside a `static { }` initializer (JVM class-loading guarantee) | Remove |
 | Field is wrapped in `Collections.unmodifiableX()` and has no write sites | Remove |
 | Finding is in an `@VisibleForTesting`-annotated method only called from test code | Downgrade to INFO |
+| Field is `final` and initialized in the constructor (safely published) | Remove |
+| Access is inside a single-thread executor and all other accesses are also on the same executor | Downgrade to INFO |
 
 Log every filtered finding to `concurrency_analysis/consolidation.log` with the matching filter rule.
 
@@ -35,19 +37,19 @@ Log every filtered finding to `concurrency_analysis/consolidation.log` with the 
 Apply these overrides after filtering:
 
 **Promote to CRITICAL if:**
-- Finding involves a Binder call under lock in `AudioService`, `ActivityManagerService`, `WindowManagerService`, or `PackageManagerService`.
+- Finding involves a blocking I/O, IPC, or RPC call under a widely-contended lock (lock with ≥ 5 acquisition sites).
 - Finding is a confirmed two-lock cycle: both `A→B` and `B→A` edges exist in `lock-registry.json`.
-- Finding is a re-entrant `IAudioFocusDispatcher` callback deadlock.
+- Finding is a re-entrant callback deadlock where the lock is the component's primary lock.
 
 **Keep as HIGH if:**
-- Binder call under lock in any other system service.
-- Unsynchronized access to state that controls audio routing or focus arbitration.
+- Blocking call under lock in any service class.
+- Unsynchronized access to state that controls application-critical behaviour (routing, auth, core state machines).
 
 **Downgrade to MEDIUM if:**
 - Lock involved is used only within a single file (no cross-class locking identified).
 
 **Downgrade to LOW if:**
-- Field is annotated `@GuardedBy` consistently but has one unlocked access in a non-production code path.
+- Field is annotated `@GuardedBy` consistently but has one unlocked access in a demonstrably non-production code path.
 
 ### Step 3 — Write the Markdown report
 
@@ -71,7 +73,7 @@ Follow the exact structure in `.github/skills/jca-analyze/references/issue-outpu
   "findings": [
     {
       "id": "JCA-0001",
-      "type": "binder_call_under_lock",
+      "type": "blocking_call_under_lock",
       "severity": "CRITICAL",
       "title": "...",
       "description": "...",

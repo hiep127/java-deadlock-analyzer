@@ -10,7 +10,7 @@ This document defines the complete step-by-step orchestration process for the `/
 /jca-analyze <SOURCE_PATH>
 ```
 
-`SOURCE_PATH` is the repository-relative path to the AOSP Java directory to analyze (e.g., `frameworks/base/services/core/java/com/android/server/audio/`).
+`SOURCE_PATH` is the repository-relative path to a Java source directory to analyze (e.g., `src/main/java/com/example/service/`).
 
 ---
 
@@ -58,7 +58,7 @@ If either file is missing, log the failure and **abort**.
 Log:
 ```
 [<timestamp>] Phase 1: Partitioner complete — <N> partitions
-[<timestamp>] Phase 2: Diagram generator complete — <M> locks, <K> Binder interfaces
+[<timestamp>] Phase 2: Diagram generator complete — <M> locks, <K> IPC interfaces
 ```
 
 ---
