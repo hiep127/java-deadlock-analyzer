@@ -57,9 +57,9 @@ If any check fails, print an error message and **abort**. Do not create any outp
 
 ## Phase 1 — Partition  *(and Phase 2 in parallel)*
 
-**Invoke** `jca-partitioner` agent with `SOURCE_PATH`.
+**Delegate to the `jca-partitioner` agent** with `SOURCE_PATH`. This agent splits the source tree into partitions and writes `concurrency_analysis/partitions.json`.
 
-**In parallel**, invoke `jca-diagram-generator` agent with `SOURCE_PATH`.
+**In parallel, delegate to the `jca-diagram-generator` agent** with `SOURCE_PATH`. This agent scans all source files and writes the lock registry and DOT graph.
 
 **Wait for both** to complete. Verify:
 - `concurrency_analysis/partitions.json` exists and contains at least one partition.
@@ -80,7 +80,7 @@ Log:
 
 For each partition `P` in `concurrency_analysis/partitions.json`:
 
-**Invoke** `jca-source-scanner` agent with `PARTITION_ID = P.id`.
+**Delegate to the `jca-source-scanner` agent** with `PARTITION_ID = P.id`. This agent performs a structural pass over the partition's source files.
 
 Run all partition scanners **in parallel** (up to `pipeline.parallelWorkers` concurrent agents, from `jca-config.json`).
 
@@ -99,7 +99,7 @@ Log:
 
 For each partition `P`:
 
-**Invoke** `jca-fullscan-worker` agent with `PARTITION_ID = P.id`.
+**Delegate to the `jca-fullscan-worker` agent** with `PARTITION_ID = P.id`. This agent does a line-by-line deep scan and annotates every synchronization event.
 
 Run all fullscan workers **in parallel** (up to `pipeline.parallelWorkers` concurrent agents).
 
@@ -116,11 +116,11 @@ Log:
 
 ## Phase 5 — Detection (parallel: three detectors per partition, partitions also in parallel)
 
-For each partition `P`, **concurrently invoke all three detector agents**:
+For each partition `P`, **concurrently delegate to all three detector agents**:
 
-1. `jca-race-detector` with `PARTITION_ID = P.id`
-2. `jca-deadlock-detector` with `PARTITION_ID = P.id`
-3. `jca-edge-case-analyzer` with `PARTITION_ID = P.id`
+1. **Delegate to the `jca-race-detector` agent** with `PARTITION_ID = P.id`
+2. **Delegate to the `jca-deadlock-detector` agent** with `PARTITION_ID = P.id`
+3. **Delegate to the `jca-edge-case-analyzer` agent** with `PARTITION_ID = P.id`
 
 Multiple partitions' detector sets may also run in parallel (up to `pipeline.parallelWorkers` total active agents).
 
@@ -140,7 +140,7 @@ Log:
 
 ## Phase 6 — Merge (reduce)
 
-**Invoke** `jca-merger` agent.
+**Delegate to the `jca-merger` agent.** This agent reads all findings files and writes `concurrency_analysis/merged-findings.json`.
 
 **Wait for completion.** Verify that `concurrency_analysis/merged-findings.json` exists.
 
@@ -155,7 +155,7 @@ Log:
 
 ## Phase 7 — Consolidate
 
-**Invoke** `jca-consolidator` agent.
+**Delegate to the `jca-consolidator` agent.** This agent formats the final report from `merged-findings.json` and writes `report.md` and `report.json`.
 
 **Wait for completion.** Verify that both `concurrency_analysis/report.md` and `concurrency_analysis/report.json` exist.
 

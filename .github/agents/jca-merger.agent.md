@@ -1,8 +1,8 @@
 ---
-description: "Merges and deduplicates raw finding files from all detector workers across all partitions into a single unified findings file."
-tools: [read, search, edit, execute, agent]
+description: "Merges and deduplicates all raw finding files from every partition and every detector into a single unified findings file. Processes one partition at a time to avoid context exhaustion. Writes concurrency_analysis/merged-findings.json."
+tools: [read, write]
 user-invocable: false
 ---
 Read and execute the full instructions from: `.github/skills/jca-analyze/agents/jca-merger-agent.md`
 
-Execute all steps as specified, using the `SOURCE_PATH` provided in this conversation. Input files from previous phases are in `concurrency_analysis/`.
+Read `concurrency_analysis/partitions.json` to enumerate partitions. Process findings files one partition at a time. Write output only to `concurrency_analysis/merged-findings.json`.

@@ -1,8 +1,8 @@
 ---
-description: "Formats the final analysis report from merged findings: assigns severity, filters false positives, and produces report.md and report.json."
-tools: [read, search, edit, execute, agent]
+description: "Formats the final concurrency analysis report from merged findings: promotes severities for cross-partition patterns, filters false positives, and produces the human-readable report.md and machine-readable report.json."
+tools: [read, write]
 user-invocable: false
 ---
 Read and execute the full instructions from: `.github/skills/jca-analyze/agents/jca-consolidator-agent.md`
 
-Execute all steps as specified, using the `SOURCE_PATH` provided in this conversation. Input files from previous phases are in `concurrency_analysis/`.
+Read `concurrency_analysis/merged-findings.json` and `concurrency_analysis/lock-registry.json`. Write output only to `concurrency_analysis/report.md` and `concurrency_analysis/report.json`.

@@ -1,8 +1,9 @@
 ---
-description: "Orchestrates the full JCA map-reduce pipeline: initializes output directories, sequences all sub-agents, and confirms pipeline completion."
-tools: [read, search, edit, execute, agent]
+description: "Orchestrates the full JCA map-reduce pipeline: initializes output directories, sequences all sub-agents phase by phase, verifies outputs, and prints the final summary."
+tools: [read, write, agent]
+agents: [jca-partitioner, jca-diagram-generator, jca-source-scanner, jca-fullscan-worker, jca-race-detector, jca-deadlock-detector, jca-edge-case-analyzer, jca-merger, jca-consolidator]
 user-invocable: false
 ---
-Read and execute the full instructions from: `.github/skills/jca-analyze/workflows/analyze.md`
+Read and execute the full instructions from: `.github/skills/jca-analyze/agents/jca-orchestrator-agent.md`
 
-Execute all steps as specified, using the `SOURCE_PATH` provided in this conversation. Input files from previous phases are in `concurrency_analysis/`.
+Use the `SOURCE_PATH` provided in this conversation. Spawn each named sub-agent as an isolated agent invocation — do not inline their work. All inter-agent data flows through files in `concurrency_analysis/`.

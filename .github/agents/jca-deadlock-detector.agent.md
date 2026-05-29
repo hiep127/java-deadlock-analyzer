@@ -1,8 +1,8 @@
 ---
-description: "Hunts for lock-order inversion, nested monitor cycles, and synchronous Binder calls made while holding a lock in AOSP Java code."
-tools: [read, search, edit, execute, agent]
+description: "Identifies deadlock conditions in an assigned partition: lock-order inversion, blocking calls under locks (IPC, I/O, JDBC, HTTP), Future.get() under lock, ReadWriteLock upgrade deadlock, ReentrantLock misuse, and wait/notify hazards. Writes concurrency_analysis/findings/<PARTITION_ID>-deadlocks.json."
+tools: [read, write]
 user-invocable: false
 ---
 Read and execute the full instructions from: `.github/skills/jca-analyze/agents/jca-deadlock-detector-agent.md`
 
-Execute all steps as specified, using the `SOURCE_PATH` provided in this conversation. Input files from previous phases are in `concurrency_analysis/`.
+Use the `PARTITION_ID` provided by the orchestrator. Read `concurrency_analysis/lock-registry.json` and `concurrency_analysis/scans/<PARTITION_ID>-fullscan.json`. Write output only to `concurrency_analysis/findings/<PARTITION_ID>-deadlocks.json`.
