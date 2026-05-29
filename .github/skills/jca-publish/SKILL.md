@@ -1,3 +1,8 @@
+---
+name: jca-publish
+description: Publishes the most recently generated JCA analysis report (concurrency_analysis/report.md) to the configured destination (default: Confluence). Reads publish settings from jca-config.json.
+---
+
 # Skill: /jca-publish
 
 ## Trigger

@@ -1,3 +1,8 @@
+---
+name: jca-analyze
+description: Runs the full JCA multi-agent concurrency analysis pipeline on a Java source path. Detects deadlocks, race conditions, executor hazards, callback re-entrancy, and JNI boundary blocking. Usage: /jca-analyze <SOURCE_PATH>
+---
+
 # Skill: /jca-analyze
 
 ## Trigger

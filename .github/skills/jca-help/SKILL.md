@@ -1,3 +1,8 @@
+---
+name: jca-help
+description: Displays JCA usage instructions, available slash commands (/jca-analyze, /jca-publish, /jca-help), the agent pipeline overview, and links to reference documentation.
+---
+
 # Skill: /jca-help
 
 ## Trigger
