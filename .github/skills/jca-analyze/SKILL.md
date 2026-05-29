@@ -39,7 +39,8 @@ Execution follows the map-reduce workflow defined in `workflows/analyze.md`:
 | 1+2 | jca-partitioner + jca-diagram-generator | Partition source; build lock graph (parallel) |
 | 3 | jca-source-scanner | Structural scan per partition (parallel) |
 | 4 | jca-fullscan-worker | Deep line-by-line scan per partition (parallel) |
-| 5 | jca-race-detector, jca-deadlock-detector, jca-edge-case-analyzer | Detection per partition (all three parallel) |
+| 4.5 | jca-cross-file-edge-resolver | Join `locks_held` call-site annotations against registry to infer indirect cross-file lock chains; appends new edges to `lock-registry.json` |
+| 5 | jca-race-detector, jca-deadlock-detector, jca-edge-case-analyzer | Detection per partition using the now-complete lock graph (all three parallel) |
 | 6 | jca-merger | Merge and deduplicate all findings |
 | 7 | jca-consolidator | Format final report; filter false positives |
 

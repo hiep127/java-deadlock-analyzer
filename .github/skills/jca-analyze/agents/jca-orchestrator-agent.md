@@ -43,6 +43,7 @@ Follow `workflows/analyze.md` exactly. The phases are:
 | 1 + 2 | jca-partitioner + jca-diagram-generator | Run in parallel |
 | 3 | jca-source-scanner (one per partition) | All partitions in parallel |
 | 4 | jca-fullscan-worker (one per partition) | All partitions in parallel |
+| 4.5 | jca-cross-file-edge-resolver | Sequential — waits for all Phase 4; enriches lock-registry.json with inferred cross-file edges before detection |
 | 5 | jca-race-detector + jca-deadlock-detector + jca-edge-case-analyzer (per partition) | All three per partition in parallel; partitions also in parallel |
 | 6 | jca-merger | Sequential (waits for all Phase 5) |
 | 7 | jca-consolidator | Sequential (waits for Phase 6) |

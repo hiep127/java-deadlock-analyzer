@@ -41,7 +41,7 @@ For every file, read from line 1 to the last line without stopping. Maintain a *
 | `wait_notify` | `object.wait()`, `object.notify()`, `object.notifyAll()` |
 | `volatile_access` | Read or write to a `volatile` field |
 | `nested_synchronized` | `synchronized` block inside another `synchronized` block (same method) |
-| `cross_method_lock_entry` | Method call made while locks are held that itself contains a `synchronized` block or lock acquisition |
+| `cross_method_lock_entry` | Method call made while locks are held that itself contains a `synchronized` block or lock acquisition — **must record `callee_class` and `callee_method`** |
 | `jni_call_under_lock` | `native` method call while `locks_held` is non-empty |
 | `oneway_ordering_assumption` | `oneway` AIDL/HIDL call followed immediately by a synchronous call on the same interface with no synchronization barrier |
 
@@ -81,6 +81,18 @@ Write `concurrency_analysis/scans/<PARTITION_ID>-fullscan.json`.
       "detail": "synchronized(inventoryLock) acquired inside synchronized(mLock)",
       "locks_held": ["mLock"],
       "method": "reserveInventory",
+      "severity_hint": "MEDIUM"
+    },
+    {
+      "file": "src/main/java/com/example/service/OrderService.java",
+      "line": 198,
+      "end_line": 198,
+      "type": "cross_method_lock_entry",
+      "detail": "call to InventoryService.reserveItem() made while holding mLock",
+      "locks_held": ["mLock"],
+      "method": "placeOrder",
+      "callee_class": "InventoryService",
+      "callee_method": "reserveItem",
       "severity_hint": "MEDIUM"
     }
   ]

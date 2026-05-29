@@ -28,7 +28,8 @@ All inter-agent data files are located in `concurrency_analysis/`. The read orde
 |---|---|
 | Scan (jca-source-scanner) | `concurrency_analysis/partitions.json` |
 | Fullscan (jca-fullscan-worker) | `concurrency_analysis/partitions.json`, `concurrency_analysis/scans/<id>-structure.json` |
-| Detection (race/deadlock/edge-case) | `concurrency_analysis/lock-registry.json`, `concurrency_analysis/scans/<id>-fullscan.json` |
+| Cross-file edge resolution (jca-cross-file-edge-resolver) | `concurrency_analysis/lock-registry.json`, `concurrency_analysis/partitions.json`, then all `concurrency_analysis/scans/<id>-fullscan.json` one at a time |
+| Detection (race/deadlock/edge-case) | `concurrency_analysis/lock-registry.json` (now enriched with cross-file edges), `concurrency_analysis/scans/<id>-fullscan.json` |
 | Merge (jca-merger) | All `concurrency_analysis/findings/*.json` |
 | Consolidate (jca-consolidator) | `concurrency_analysis/merged-findings.json`, `concurrency_analysis/lock-registry.json` |
 

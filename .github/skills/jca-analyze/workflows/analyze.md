@@ -114,6 +114,24 @@ Log:
 
 ---
 
+## Phase 4.5 — Cross-File Edge Resolution
+
+**Delegate to the `jca-cross-file-edge-resolver` agent** (no parameters needed — it reads `partitions.json` itself).
+
+This agent closes the cross-file lock-ordering gap: the diagram generator can only record a `(outer → inner)` edge when both lock acquisitions are visible within the same file. This agent reads the `cross_method_lock_entry` annotations from all fullscan outputs and joins them against the lock registry to infer indirect, multi-file lock chains. It appends the inferred edges directly to `lock-registry.json` so that Phase 5 detectors see the complete edge set.
+
+**Wait for completion.** Verify:
+- `concurrency_analysis/cross-file-edges.json` exists.
+
+If missing, log the failure and **abort**.
+
+Log:
+```
+[<timestamp>] Phase 4.5: Cross-file edge resolver complete — <N> new edges, <C> cycles confirmed
+```
+
+---
+
 ## Phase 5 — Detection (parallel: three detectors per partition, partitions also in parallel)
 
 For each partition `P`, **concurrently delegate to all three detector agents**:
@@ -216,6 +234,7 @@ If any phase fails:
 | Phase 1 (Partition) + Phase 2 (Diagram) | Yes — run together |
 | Phase 3 workers across partitions | Yes |
 | Phase 4 workers across partitions | Yes |
+| Phase 4.5 (Cross-File Edge Resolver) | No — must wait for all Phase 4; single agent |
 | Phase 5 — three detectors within a partition | Yes |
 | Phase 5 — across different partitions | Yes |
 | Phase 6 | No — must wait for all Phase 5 |
