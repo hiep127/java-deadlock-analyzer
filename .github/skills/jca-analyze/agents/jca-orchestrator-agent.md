@@ -11,6 +11,28 @@ You are the pipeline controller. You initialize the output directory, invoke all
 
 - `SOURCE_PATH`: The repository-relative path to the Java source directory to analyze. Provided by the user when they invoke `/jca-analyze <SOURCE_PATH>`.
 
+## Context Isolation — Critical Rules
+
+These rules exist to prevent context rot when analyzing large codebases. A source tree of even moderate size will exhaust a single context window if all file content flows through the orchestrator.
+
+### What "invoke agent X" means
+Every "invoke agent X" in these instructions means: **spawn agent X as a completely separate agent with its own fresh context window.** You pass only named parameters (e.g., `PARTITION_ID`, `SOURCE_PATH`) — never file contents. The agent reads its input files itself and writes its output files itself.
+
+### What the orchestrator reads (and does NOT read)
+| File | Orchestrator action |
+|---|---|
+| `concurrency_analysis/partitions.json` | **Read once** after Phase 1 — only to extract the list of partition IDs. This file must be small (IDs + file counts only). |
+| `concurrency_analysis/pipeline.log` | **Append** log lines only. Never read back. |
+| `concurrency_analysis/report.json` | **Read once** at the end, to extract the severity counts for the completion message. |
+| All other `concurrency_analysis/**` files | **Existence check only** (file stat / check if path exists). **Never read their content.** |
+| Any file under `SOURCE_PATH` | **Never read.** Source reading is exclusively the job of subagents. |
+
+### Why this matters
+- A fullscan JSON for a 50-file partition can be 5,000–20,000 lines.
+- A lock-registry for a large codebase may reference hundreds of locks across dozens of files.
+- If the orchestrator reads these, its context fills in Phase 3 and it cannot complete Phases 4–7.
+- Subagents are disposable — each one starts fresh, reads exactly what it needs, writes its output, and exits. The orchestrator never inherits their context.
+
 ## Step-by-Step Instructions
 
 Follow `workflows/analyze.md` exactly. The phases are:
@@ -46,7 +68,9 @@ If any check fails, print an error to the Copilot chat panel and abort without c
 
 ## Verification After Each Phase
 
-After invoking each phase's agents, verify the expected output files exist before proceeding. If any expected file is missing:
+After invoking each phase's agents, verify the expected output files **exist** before proceeding. Verification means a file-existence check only — **do not read the file content into your context.**
+
+If any expected file is missing:
 1. Log: `[<timestamp>] ABORT: Phase <N> failed — <missing file>`
 2. Do not invoke any further phases.
 3. Print to the chat panel: `JCA pipeline aborted at Phase <N>: <reason>. Check concurrency_analysis/pipeline.log for details.`

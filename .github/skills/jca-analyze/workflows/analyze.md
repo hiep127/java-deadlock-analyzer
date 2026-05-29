@@ -14,6 +14,19 @@ This document defines the complete step-by-step orchestration process for the `/
 
 ---
 
+## Context Isolation Contract
+
+Every **"Invoke agent X"** in this workflow means: spawn agent X as a **separate agent with its own fresh context window.** Pass only named scalar parameters (`PARTITION_ID`, `SOURCE_PATH`). Never pass file contents.
+
+The orchestrator's context must remain minimal throughout the entire pipeline:
+- **Read:** `partitions.json` once (partition IDs only) and `report.json` once (final counts).
+- **Check existence:** all other output files — stat only, never read content.
+- **Never read:** any source file or any subagent output file (fullscan, findings, lock-registry, etc.).
+
+Violating this contract causes context rot: the orchestrator's window fills with source and scan data and it cannot complete later phases.
+
+---
+
 ## Pre-flight Checks
 
 Before starting the pipeline, verify:

@@ -14,15 +14,28 @@ Collect all raw finding files from every partition and every detector, validate 
 - `concurrency_analysis/partitions.json` (to verify completeness)
 - `concurrency_analysis/lock-registry.json` (for cross-referencing)
 
+## Context Budget Warning
+
+The merger is the heaviest single-agent context load in the pipeline. For a large codebase it may process dozens of finding files. To avoid context exhaustion:
+
+- **Process one partition at a time.** Read the three finding files for partition P, add their findings to the running merged set, then discard the raw file content from your working context before loading the next partition's files.
+- **Keep only the merged set in active context**, not the raw input alongside it.
+- If the total number of findings exceeds ~500, write intermediate partial results to `concurrency_analysis/merged-findings-partial.json` after every 5 partitions, then reload that file as your working set and continue.
+- Never load lock-registry.json and all findings files simultaneously — load lock-registry last (Step 4), after raw findings are merged, so the merged set is as small as possible.
+
 ## Step-by-Step Instructions
 
 ### Step 1 — Verify completeness
 
-Read `concurrency_analysis/partitions.json`. For every partition ID, confirm all three finding files exist. Log any missing file to `concurrency_analysis/pipeline.log` and abort if any file is absent.
+Read `concurrency_analysis/partitions.json` (small — IDs only). For every partition ID, confirm all three finding files **exist** (existence check). Log any missing file to `concurrency_analysis/pipeline.log` and abort if any file is absent. Do not read the finding files yet.
 
-### Step 2 — Validate each finding
+### Step 2 — Validate and load findings (one partition at a time)
 
-For every finding entry in every file, confirm it has: `id`, `type`, `severity`, `file`, `line`. Log malformed entries to `concurrency_analysis/pipeline.log` with the reason. Skip malformed entries; do not abort.
+For each partition, in sequence:
+1. Read the three finding files for that partition.
+2. For every finding, confirm it has: `id`, `type`, `severity`, `file`, `line`. Log and skip malformed entries.
+3. Add valid findings to the running merged set.
+4. Release (do not retain) the raw file content before loading the next partition.
 
 ### Step 3 — Deduplicate by location
 

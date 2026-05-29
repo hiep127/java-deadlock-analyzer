@@ -2,6 +2,15 @@
 
 All JCA agents must follow this protocol when reading the source inventory and consuming inter-agent output files.
 
+## 0. Context Isolation — System-Wide Rule
+
+Every agent in the JCA pipeline runs in its own isolated context window. This is the foundational rule that prevents context rot on large codebases.
+
+- **One file at a time.** Read a file, extract what you need into your working data structure, then treat the file content as released. Do not hold multiple large files simultaneously.
+- **Never buffer raw source content alongside extracted data.** Your output is structured JSON, not a copy of the source.
+- **The orchestrator never reads your output.** You communicate exclusively via files. Write your output, then exit.
+- **Intermediate checkpoints.** If your workload exceeds ~200 files or ~500 annotations/findings, write a partial output file, reload it as your working state, and continue — rather than holding everything in memory at once.
+
 ---
 
 ## 1. Reading Source Files

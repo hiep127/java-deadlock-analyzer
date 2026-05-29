@@ -6,11 +6,20 @@ Read the protocol in `.github/skills/jca-analyze/agents/INVENTORY_READING_PROTOC
 
 Build a complete lock dependency graph and IPC/RPC interface inventory for the entire `SOURCE_PATH`. Your outputs (`lock-registry.json` and `lock-dependency.dot`) are the authoritative reference used by all detector agents to cross-reference findings.
 
+## Context Budget Warning
+
+The diagram generator scans every `.java` file in `SOURCE_PATH` — this is the widest single-agent read in the entire pipeline. To avoid context exhaustion on large codebases:
+
+- **Process one file at a time.** Read a file, extract its lock/IPC data into your running registry, then release the file content from your working context before loading the next file.
+- **Never hold more than one source file's content in context simultaneously.** Your output is the extracted structured data (locks, IPC interfaces, edges), not the raw source.
+- If `SOURCE_PATH` contains more than ~200 files, write an intermediate `concurrency_analysis/lock-registry-partial.json` after every 50 files, reload it as your working state, and continue. Overwrite it again at the next checkpoint.
+- The DOT graph is built from edge pairs only — do not buffer full file content to build it.
+
 ## Step-by-Step Instructions
 
 ### Step 1 — Scan every file top-to-bottom
 
-Read every `.java` file under `SOURCE_PATH` completely. For each file, extract:
+Read every `.java` file under `SOURCE_PATH` completely, **one file at a time** (see Context Budget Warning above). For each file, extract:
 
 **Lock objects:**
 - Fields declared as `Object`, `ReentrantLock`, `ReadWriteLock`, `ReentrantReadWriteLock`, `Semaphore`, or any type commonly used as a monitor.
