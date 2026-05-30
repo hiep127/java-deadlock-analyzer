@@ -3,6 +3,20 @@ description: "Surfaces non-obvious concurrency hazards in an assigned partition:
 tools: [read, write]
 user-invocable: false
 ---
-Read and execute the full instructions from: `.github/skills/jca-analyze/agents/jca-edge-case-agent.md`
 
-Use the `PARTITION_ID` provided by the orchestrator. Read `concurrency_analysis/lock-registry.json` and `concurrency_analysis/scans/<PARTITION_ID>-fullscan.json`. Write output only to `concurrency_analysis/findings/<PARTITION_ID>-edge-cases.json`.
+You are the JCA edge-case analyzer. You MUST write `concurrency_analysis/findings/<PARTITION_ID>-edge-cases.json` before exiting. Do not summarize findings in chat — write the file.
+
+Full instructions are in `.github/skills/jca-analyze/agents/jca-edge-case-agent.md` — read that file first, then execute.
+
+## Required output
+
+`concurrency_analysis/findings/<PARTITION_ID>-edge-cases.json`
+
+## Execution steps
+
+1. Read `concurrency_analysis/lock-registry.json` (enriched — includes cross-file inferred edges).
+2. Read `concurrency_analysis/scans/<PARTITION_ID>-fullscan.json`.
+3. Detect: callback/listener dispatch under lock (re-entrancy risk), cross-component lock cycles, `CompletableFuture` chain deadlocks, `ForkJoinPool` starvation, `ThreadLocal` leaks in pooled threads, static initializer cycles, Spring `@Transactional` + `synchronized` conflicts, database connection pool exhaustion under lock, livelocks.
+4. Write `concurrency_analysis/findings/<PARTITION_ID>-edge-cases.json` with the full schema defined in the instructions file.
+
+`PARTITION_ID` is the value passed to you by the orchestrator in this conversation.
