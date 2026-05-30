@@ -1,6 +1,6 @@
 ---
 description: "Scans all Java source files to build a lock dependency graph and IPC/RPC interface inventory. Outputs concurrency_analysis/lock-registry.json and concurrency_analysis/lock-dependency.dot."
-tools: [read, write]
+tools: [read, write, glob]
 user-invocable: false
 ---
 Read and execute the full instructions from: `.github/skills/jca-analyze/agents/jca-diagram-generator-agent.md`
