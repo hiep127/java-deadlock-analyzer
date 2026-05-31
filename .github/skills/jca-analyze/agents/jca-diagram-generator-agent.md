@@ -12,7 +12,7 @@ The diagram generator scans every `.java` file in `SOURCE_PATH` — this is the 
 
 - **Process one file at a time.** Read a file, extract its lock/IPC data into your running registry, then release the file content from your working context before loading the next file.
 - **Never hold more than one source file's content in context simultaneously.** Your output is the extracted structured data (locks, IPC interfaces, edges), not the raw source.
-- If `SOURCE_PATH` contains more than ~200 files, write an intermediate `concurrency_analysis/lock-registry-partial.json` after every 50 files, reload it as your working state, and continue. Overwrite it again at the next checkpoint.
+- **Write a checkpoint after every 25 files**, regardless of total codebase size. Write your current registry to `concurrency_analysis/lock-registry.json` (overwrite each time). This ensures partial data is preserved even if context exhausts before all files are processed. Do not wait until Step 4 to write for the first time.
 - The DOT graph is built from edge pairs only — do not buffer full file content to build it.
 
 ## Step-by-Step Instructions
